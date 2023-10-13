@@ -9,7 +9,7 @@ struct Blake3State {
 }
 
 impl Blake3State {
-    fn new(input_chain: [u32; 8], counter: u64, block_bytes: u32, domain_separator: u32, message_block: [u32; 16]) -> Self {
+    fn new(input_chain: [u32; 8], counter: u64, block_len: u32, flags: u32, message_block: [u32; 16]) -> Self {
         Self {
             state: [
                 input_chain[0], input_chain[1],
@@ -18,7 +18,7 @@ impl Blake3State {
                 input_chain[6], input_chain[7],
                 IV[0], IV[1], IV[2], IV[3],
                 counter as u32, (counter >> 32) as u32,
-                block_bytes, domain_separator
+                block_len, flags
             ],
             message_block
         }
@@ -72,12 +72,13 @@ impl Blake3State {
 }
 
 /// Performs the compression function specified by section 2.2
-fn compress(input_chain: [u32; 8], counter: u64, block_bytes: u32, domain_separator: u32, message_block: [u32; 16]) -> [u32; 16] {
+/// Words on 64 byte message blocks (16 32-bit words)
+fn compress(input_chain: [u32; 8], counter: u64, block_len: u32, flags: u32, message_block: [u32; 16]) -> [u32; 16] {
     let mut state = Blake3State::new(
         input_chain,
         counter,
-        block_bytes,
-        domain_separator,
+        block_len,
+        flags,
         message_block
     );
 
