@@ -20,7 +20,7 @@ struct ChunkState {
     chaining_value: [u32; 8],
 
     // The counter for this chunk
-    chunk_counter: u64,
+    chunk_counter: Field,
 
     // The current buffer of data
     block: [u32; BLOCK_LEN],
@@ -38,7 +38,7 @@ struct ChunkState {
 impl ChunkState {
     /// Instantiate a new chunk, which can compress up to 1024 bytes. 
     /// `key_words` is the initial chaining value of the chunk
-    fn new(key_words: [u32; 8], chunk_counter: u64, flags: u32) -> Self {
+    fn new(key_words: [u32; 8], chunk_counter: Field, flags: u32) -> Self {
         Self {
             chaining_value: key_words,
             chunk_counter,

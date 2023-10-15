@@ -38,4 +38,66 @@ impl Blake3Hasher {
         self.cv_stack = popped;
         res
     }
+
+    fn add_chunk_chaining_value(&mut self, mut new_cv: [u32; 8], mut total_chunks: Field) {
+        total_chunks = lsb_zeros(total_chunks);
+        for i in 0..total_chunks {
+            new_cv = chunk::parent_cv(self.pop_stack(), new_cv, self.key_words, self.flags);
+        }
+        self.push_stack(new_cv);
+    }
+
+    fn update(&mut self, mut input: [u32]) {
+        let num_chunks = input.len() / chunk::CHUNK_LEN + 1;
+        let mut input_words_left = input.len();
+        for i in 0..num_chunks {
+            if self.chunk_state.len() == chunk::CHUNK_LEN {
+                let chunk_cv = self.chunk_state.chaining_value;
+                let total_chunks = self.chunk_state.chunk_counter + 1;
+                self.add_chunk_chaining_value(chunk_cv, total_chunks);
+                self.chunk_state = chunk::ChunkState::new(self.key_words, total_chunks, self.flags);
+            }
+
+            let offset = self.chunk_state.len();
+            let take = chunk::min(chunk::CHUNK_LEN - offset, input_words_left);
+            let mut to_update = [];
+            for j in 0..take {
+                to_update.push_back(input[chunk::CHUNK_LEN*i+j]);
+            }
+            self.chunk_state.update(to_update);
+            input_words_left -= take;
+        }
+    }
+}
+
+/// Get the number of zeros starting at the lsb
+/// Calls the unconstrained implementation
+/// TODO: I don't think this assertion is enough
+fn lsb_zeros(x: Field) -> Field {
+    let result = lsb_zeros_impl(x);
+    assert(x as u64 >= 2.pow_32(result) as u64);
+    result
+}
+
+unconstrained fn lsb_zeros_impl(x: Field) -> Field {
+    let bits = x.to_le_bits(64);
+    let mut result = 0;
+    let mut triggered = false;
+    for i in 0..64 {
+        if bits[i] == 1 {
+            if !triggered {
+                result = i;
+                triggered = true;
+            }
+        }
+    }
+    result
+}
+
+#[test]
+fn test_lsb_zeros() {
+    assert(lsb_zeros(3) == 0);
+    assert(lsb_zeros(2) == 1);
+    assert(lsb_zeros(4) == 2);
+    assert(lsb_zeros(5) == 0);
 }
