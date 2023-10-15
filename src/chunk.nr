@@ -55,7 +55,15 @@ impl ChunkState {
 
     /// TODO: Remove mutability on Noir allowing &mut self -> &self calls
     /// Determine if we are a CHUNK_START
-    fn start_flag(&mut self) -> u32 {
+    fn start_flag(self) -> u32 {
+        if self.blocks_compressed == 0 {
+            CHUNK_START
+        } else {
+            0
+        }
+    }
+
+    fn start_flag_mut(&mut self) -> u32 {
         if self.blocks_compressed == 0 {
             CHUNK_START
         } else {
@@ -64,7 +72,7 @@ impl ChunkState {
     }
 
     fn update(&mut self, input: [u32]) {
-        let num_blocks = (input.len() / BLOCK_LEN) + 1;
+        let num_blocks = ((input.len() as u64 / BLOCK_LEN as u64) + 1) as Field;
         let mut input_words_left = input.len();
         for i in 0..num_blocks {
             // If the block buffer is full, compress it and clear.
@@ -72,8 +80,8 @@ impl ChunkState {
                 let compressed = compression::compress(
                     self.chaining_value,
                     self.chunk_counter,
-                    BLOCK_LEN as u32,
-                    self.flags + self.start_flag(),
+                    BLOCK_LEN,
+                    self.flags + self.start_flag_mut(),
                     self.block
                 );
                 self.chaining_value = first_8_words(compressed);
@@ -91,6 +99,80 @@ impl ChunkState {
             input_words_left -= take;
         }
     }
+
+    fn output(self) -> Output {
+        Output {
+            input_chaining_value: self.chaining_value,
+            block: self.block,
+            counter: self.chunk_counter,
+            block_len: self.block_len,
+            flags: self.flags + self.start_flag() + CHUNK_END
+        }
+    }
+}
+
+struct Output {
+    input_chaining_value: [u32; 8],
+    block: [u32; 16],
+    counter: Field,
+    block_len: Field,
+    flags: u32
+}
+
+impl Output {
+    fn chaining_value(self) -> [u32; 8] {
+        first_8_words(compression::compress(
+            self.input_chaining_value,
+            self.counter,
+            self.block_len,
+            self.flags,
+            self.block
+        ))
+    }
+
+    fn root_output_bytes<N>(self) -> [u32; N] {
+        let mut result = [0; N];
+        let mut output_block_counter = 0;
+        let flags = self.flags + ROOT;
+
+        for i in 0..(N as u64/16)+1 {
+            let words = compression::compress(
+                self.input_chaining_value,
+                output_block_counter,
+                self.block_len,
+                flags,
+                self.block
+            );
+
+            let take = min(16, N-16*(i as Field));
+            for j in 0..take {
+                result[16*i as Field + j] = words[j];
+            }
+        }
+
+        result
+    }
+}
+
+fn parent_output(
+    left_child_cv: [u32; 8],
+    right_child_cv: [u32; 8],
+    key_words: [u32; 8],
+    flags: u32
+) -> Output {
+    let mut block_words = [0; 16];
+    for i in 0..8 {
+        block_words[i] = left_child_cv[i];
+        block_words[i+8] = right_child_cv[i];
+    }
+
+    Output {
+        input_chaining_value: key_words,
+        block: block_words,
+        counter: 0,
+        block_len: BLOCK_LEN,
+        flags: flags + PARENT
+    }
 }
 
 fn parent_cv(
@@ -99,19 +181,7 @@ fn parent_cv(
     key_words: [u32; 8],
     flags: u32
 ) -> [u32; 8] {
-    let mut block_words = [0; 16];
-    for i in 0..8 {
-        block_words[i] = left_child_cv[i];
-        block_words[i+8] = right_child_cv[i];
-    }
-    let compressed = compression::compress(
-        key_words,
-        0,
-        BLOCK_LEN as u32,
-        flags + ROOT,
-        block_words
-    );
-    first_8_words(compressed)
+    parent_output(left_child_cv, right_child_cv, key_words, flags).chaining_value()
 }
 
 /// TODO: Unnecessary when Noir enables indexing arrays by a range

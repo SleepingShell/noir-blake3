@@ -1,6 +1,8 @@
 mod compression;
 mod chunk;
 
+use dep::std;
+
 struct Blake3Hasher {
     chunk_state: chunk::ChunkState,
     key_words: [u32; 8],
@@ -47,9 +49,9 @@ impl Blake3Hasher {
         self.push_stack(new_cv);
     }
 
-    fn update(&mut self, mut input: [u32]) {
-        let num_chunks = input.len() / chunk::CHUNK_LEN + 1;
-        let mut input_words_left = input.len();
+    fn update<N>(&mut self, mut input: [u32; N]) {
+        let num_chunks = N / chunk::CHUNK_LEN + 1;
+        let mut input_words_left = N;
         for i in 0..num_chunks {
             if self.chunk_state.len() == chunk::CHUNK_LEN {
                 let chunk_cv = self.chunk_state.chaining_value;
@@ -62,11 +64,27 @@ impl Blake3Hasher {
             let take = chunk::min(chunk::CHUNK_LEN - offset, input_words_left);
             let mut to_update = [];
             for j in 0..take {
-                to_update.push_back(input[chunk::CHUNK_LEN*i+j]);
+                to_update = to_update.push_back(input[chunk::CHUNK_LEN*i+j]);
             }
             self.chunk_state.update(to_update);
             input_words_left -= take;
         }
+    }
+
+    fn finalize<N>(self) -> [u32; N] {
+        let mut output = self.chunk_state.output();
+        let mut parent_nodes = self.cv_stack_len;
+        for i in 0..parent_nodes {
+            parent_nodes -= 1;
+            output = chunk::parent_output(
+                self.cv_stack[parent_nodes],
+                output.chaining_value(),
+                self.key_words,
+                self.flags
+            );
+        }
+
+        output.root_output_bytes()
     }
 }
 
@@ -100,4 +118,15 @@ fn test_lsb_zeros() {
     assert(lsb_zeros(2) == 1);
     assert(lsb_zeros(4) == 2);
     assert(lsb_zeros(5) == 0);
+}
+
+// Infinite loop, crashes system. I'm thinking maybe need to change chunk_state.update() to also be generic and have a compile-time bounded loop
+#[test]
+fn test_hasher() {
+    let mut hasher = Blake3Hasher::new();
+    let input = [100,200,300];
+    hasher.update(input);
+
+    let output: [u32; 16] = hasher.finalize();
+    std::println(output);
 }
