@@ -1,7 +1,9 @@
 use crate::compression;
+use dep::std;
 
 /// Configuration constants
 global BLOCK_LEN: Field = 16;
+global CHUNK_LEN: Field = 256;
 
 /// Flag constants
 global CHUNK_START: u32 = 1;
@@ -91,6 +93,27 @@ impl ChunkState {
     }
 }
 
+fn parent_cv(
+    left_child_cv: [u32; 8],
+    right_child_cv: [u32; 8],
+    key_words: [u32; 8],
+    flags: u32
+) -> [u32; 8] {
+    let mut block_words = [0; 16];
+    for i in 0..8 {
+        block_words[i] = left_child_cv[i];
+        block_words[i+8] = right_child_cv[i];
+    }
+    let compressed = compression::compress(
+        key_words,
+        0,
+        BLOCK_LEN as u32,
+        flags + ROOT,
+        block_words
+    );
+    first_8_words(compressed)
+}
+
 /// TODO: Unnecessary when Noir enables indexing arrays by a range
 /// Get the first 8 words
 fn first_8_words(x: [u32; 16]) -> [u32; 8] {
@@ -102,7 +125,7 @@ fn first_8_words(x: [u32; 16]) -> [u32; 8] {
 }
 
 fn min(x: Field, y: Field) -> Field {
-    if x as u128 > y as u128 {
+    if x as u126 > y as u126 {
         y
     } else {
         x
