@@ -71,9 +71,9 @@ impl ChunkState {
         }
     }
 
-    fn update(&mut self, input: [u32]) {
-        let num_blocks = ((input.len() as u64 / BLOCK_LEN as u64) + 1) as Field;
-        let mut input_words_left = input.len();
+    fn update<N>(&mut self, input: [u32; N]) {
+        let num_blocks = ((N as u64 / BLOCK_LEN as u64) + 1) as Field;
+        let mut input_words_left = N;
         for i in 0..num_blocks {
             // If the block buffer is full, compress it and clear.
             if self.block_len == BLOCK_LEN {
